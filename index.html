@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="hi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kart Funnel</title>
+<link rel="manifest" href="manifest.json"><meta name="theme-color" content="#185FA5"><link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--tx:#1f1f1c;--mu:#6b6a63;--bd:#e2e0d8;--ac:#185FA5;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1a1a18;--card:#262624;--tx:#eceae2;--mu:#a09e94;--bd:#3a3a36;--ac:#6fa8e0}}
+:root[data-theme="dark"]{--bg:#1a1a18;--card:#262624;--tx:#eceae2;--mu:#a09e94;--bd:#3a3a36;--ac:#6fa8e0}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding-bottom:70px}
+header{padding:12px 14px 4px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+h1{font-size:17px;margin:0}
+input,select,textarea,button{font:inherit;color:var(--tx)}
+input,select,textarea{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--card)}
+button{border:1px solid var(--bd);background:var(--card);border-radius:8px;padding:8px 12px;cursor:pointer}
+button.p{background:var(--ac);border-color:var(--ac);color:#fff}
+main{padding:8px 14px;max-width:760px;margin:auto}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin:8px 0}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.k{font-size:12px;color:var(--mu)}.v{font-size:20px;font-weight:600}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--bd);padding-bottom:env(safe-area-inset-bottom,0px)}
+nav button{flex:1;border:0;border-radius:0;padding:12px 2px;font-size:12px;background:none}
+nav button.on{color:var(--ac);font-weight:600}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.b{height:8px;background:var(--bd);border-radius:4px;overflow:hidden;margin:6px 0}.b i{display:block;height:100%;background:var(--ac)}
+.tg{font-size:11px;padding:2px 8px;border-radius:10px;color:#fff;white-space:nowrap}
+dialog{width:min(94vw,520px);border:1px solid var(--bd);border-radius:14px;background:var(--bg);color:var(--tx);padding:14px;max-height:90vh}
+label{display:block;font-size:12px;color:var(--mu);margin:8px 0 2px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+.sm{font-size:13px;color:var(--mu)}
+#sug{border-radius:8px;background:var(--card);margin-top:4px;max-height:210px;overflow:auto}#sug:not(:empty){border:1px solid var(--bd)}#sug div{padding:10px;border-bottom:1px solid var(--bd)}
+body.wait #login,body.wait header,body.wait main,body.wait nav{display:none}body.out header,body.out main,body.out nav{display:none}#login{display:none}body.out:not(.wait) #login{display:block}
+</style></head><body class="wait out">
+<div id="login" style="padding:20px;max-width:380px;margin:40px auto"><h1 style="margin-bottom:14px">Kart Global • Sales Funnel</h1><div class="c"><label>Email</label><input id="em" type="email" autocomplete="username"><label>Password</label><input id="pw" type="password" autocomplete="current-password"><div id="lerr" class="sm" style="color:#E24B4A;margin-top:8px"></div><button class="p" style="width:100%;margin-top:12px" onclick="doLogin()">Login</button></div></div>
+<header><h1>Kart Global • Sales Funnel</h1><input type="month" id="mon" style="width:auto"></header>
+<main id="m"></main>
+<nav id="nav"></nav>
+<dialog id="dg"><div id="df"></div></dialog>
+<script>
+const ST=['Inquiry','Sample Sent','Negotiation','Order Won','Lost'],COL=['#378ADD','#EF9F27','#7F77DD','#1D9E75','#E24B4A'];
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const inr=n=>'₹'+(+n||0).toLocaleString('en-IN');
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+let S={inq:[],meet:[],tgt:[],task:[],cl:[],cat:{}},tab='dash',mon=today().slice(0,7);
+let armed=null,note='',db,auth,loaded={},shadow={},catShadow='',me='',started=false;
+const COLS=['inq','meet','tgt','task','cl'];
+const sj=o=>JSON.stringify(o,Object.keys(o).sort()),clean=o=>JSON.parse(JSON.stringify(o));
+const ready=()=>COLS.every(k=>loaded[k])&&loaded.cat;
+function fix(){S.cat=S.cat||{};S.cat.prod=S.cat.prod||['Safety','Defence','Oxford'];S.cat.buyer=S.cat.buyer||['Company','Supplier','Wholesaler','Retailer'];S.cat.lost=S.cat.lost||['Price','Competitor','No response','Other'];S.inq.forEach(x=>{if(x.stage=='Meeting')x.stage='Negotiation'})}
+fix();
+function save(){
+ if(!db)return;const ops=[];
+ COLS.forEach(k=>{const cur={};
+  S[k].forEach(o=>{cur[o.id]=1;const j=sj(o),key=k+'/'+o.id;if(shadow[key]!==j){ops.push(['set',db.collection(k).doc(o.id),clean(o)]);shadow[key]=j}});
+  Object.keys(shadow).forEach(key=>{if(key.startsWith(k+'/')){const id=key.slice(k.length+1);if(!cur[id]){ops.push(['del',db.collection(k).doc(id)]);delete shadow[key]}}})});
+ const cj=JSON.stringify(S.cat);if(cj!==catShadow){ops.push(['set',db.collection('meta').doc('cat'),{json:cj}]);catShadow=cj}
+ for(let i=0;i<ops.length;i+=400){const bt=db.batch();ops.slice(i,i+400).forEach(([t,r,d])=>t=='set'?bt.set(r,d):bt.delete(r));bt.commit().catch(e=>{note='Save failed: '+e.message;render()})}
+}
+function startSync(){
+ COLS.forEach(k=>db.collection(k).onSnapshot(snap=>{
+  const arr=[],keep={};
+  snap.forEach(d=>{const o=d.data();o.id=d.id;arr.push(o);shadow[k+'/'+d.id]=sj(o);keep[k+'/'+d.id]=1});
+  Object.keys(shadow).forEach(key=>{if(key.startsWith(k+'/')&&!keep[key])delete shadow[key]});
+  arr.sort((a,b)=>a.id>b.id?1:-1);S[k]=arr;loaded[k]=1;
+    render()
+ },e=>{note='Sync error: '+e.message;render()}));
+ db.collection('meta').doc('cat').onSnapshot(d=>{if(d.exists){try{S.cat=JSON.parse(d.data().json);fix();catShadow=JSON.stringify(S.cat)}catch(e){}}loaded.cat=1;render()});
+}
+function doLogin(){$('#lerr').textContent='';auth.signInWithEmailAndPassword($('#em').value.trim(),$('#pw').value).catch(()=>{$('#lerr').textContent='Wrong email or password'})}
+function logout(){auth.signOut().then(()=>location.reload())}
+function sure(b,fn){if(armed===b){armed=null;fn()}else{armed=b;const t=b.textContent;b.textContent='Tap again to confirm';setTimeout(()=>{armed=null;b.textContent=t},4000)}}
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+function seed(){
+ if(!ready())return;
+ if(!S.tgt.some(t=>t.month==mon)&&!S.task.some(t=>t.month==mon)){
+  [['Vendor meeting',1],['Client meeting',10],['Samples sell',15],['New calls',300],['Old customer calls',100]].forEach(([name,goal])=>S.tgt.push({id:'tg'+mon+name.replace(/\W/g,''),month:mon,name,goal,done:0}));
+  ['Vehicle sold','System repair','Sample collection','Catalogue making','Website making','Google Business'].forEach(name=>S.task.push({id:'tk'+mon+name.replace(/\W/g,''),month:mon,name,done:false}));
+  save();
+ }
+}
+const F={
+cl:[['company','Company'],['person','Contact person'],['mobile','Mobile no','tel'],['city','City'],['buyer','Buyer type','cat','buyer']],
+inq:[['company','Company'],['person','Contact person'],['mobile','Mobile no','tel'],['city','City'],['buyer','Buyer type','cat','buyer'],['pcat','Product category','cat','prod'],['product','Product'],['article','Article'],['sku','SKU'],['rate','Rate','number'],['qty','Qty','number'],['stage','Stage','select',ST],['date','Inquiry date','date'],['follow','Next follow-up','date'],['tsamp','Sample sent','chk'],['tquote','Quotation shared','chk'],['tmeet','Meeting','select',['Pending','Done','Not needed']],['lreason','Lost reason (if Lost)','cat','lost'],['fdate','Final order date (if Won)','date'],['fval','Final order value (if Won)','number'],['remarks','Remarks','textarea']],
+meet:[['date','Date','date'],['time','Time','time'],['with','Client / Vendor'],['type','Type','select',['Client','Vendor']],['notes','What was discussed','textarea'],['ndate','Next meeting date (optional)','date'],['next','Next action']],
+tgt:[['name','Target name'],['goal','Target number','number'],['done','Done so far','number']],
+task:[['name','Task']]};
+function openForm(k,id){
+ const o=S[k].find(x=>x.id==id)||(k=='inq'?{stage:ST[0],date:today()}:k=='meet'?{date:today(),type:'Client'}:{});
+ let h='<b>'+(id?'Edit':'Add')+'</b>';
+ F[k].forEach(([n,l,t,opt])=>{
+  h+='<label>'+l+'</label>';
+  if(t=='chk')h+='<input type="checkbox" id="f_'+n+'" style="width:22px;height:22px"'+(o[n]?' checked':'')+'>';
+  else if(t=='cat')h+='<select id="f_'+n+'" onchange="nc(\''+n+'\')">'+['',...S.cat[opt]].map(v=>'<option'+(o[n]==v?' selected':'')+'>'+v+'</option>').join('')+'<option value="__new">+ Add new category…</option></select><input id="n_'+n+'" placeholder="New category name" style="display:none;margin-top:6px">';
+  else if(t=='select')h+='<select id="f_'+n+'">'+opt.map(v=>'<option'+(o[n]==v?' selected':'')+'>'+v+'</option>').join('')+'</select>';
+  else if(t=='textarea')h+='<textarea id="f_'+n+'" rows="3">'+esc(o[n])+'</textarea>';
+  else h+='<input id="f_'+n+'" type="'+(t||'text')+'"'+((n=='company'&&k=='inq')||n=='with'?' autocomplete="off" oninput="cs(this.value)"':'')+' value="'+esc(o[n])+'">'+((n=='company'&&k=='inq')||n=='with'?'<div id="sug"></div>':'');
+ });
+ h+='<div class="row" style="margin-top:12px"><button onclick="dg.close()">Cancel</button>'+(id?'<button onclick="sure(this,()=>del(\''+k+'\',\''+id+'\'))">Delete</button>':'')+'<button class="p" onclick="sv(\''+k+'\',\''+(id||'')+'\')">Save</button></div>';
+ $('#df').innerHTML=h;
+ if(k=='inq'&&!id)$('#f_company').addEventListener('change',e=>{const p=S.cl.find(x=>x.company==e.target.value);if(p){['person','mobile','city','buyer'].forEach(n=>{const el=$('#f_'+n);if(el&&p[n])el.value=p[n]})}});
+ $('#dg').showModal();
+}
+function sv(k,id){
+ const o=S[k].find(x=>x.id==id)||{id:uid(),month:mon},old=o.stage,oldCo=o.company;
+ F[k].forEach(([n,,t,opt])=>{let v=t=='chk'?$('#f_'+n).checked:$('#f_'+n).value;if(t=='number')v=+v||0;if(t=='cat'&&v=='__new'){v=$('#n_'+n).value.trim();if(v&&!S.cat[opt].includes(v))S.cat[opt].push(v)}o[n]=v});
+ if(k=='inq'||k=='meet'){o.date=o.date||today()}
+ if(k=='inq'&&o.stage!=old)o.sdate=today();
+ if(k=='inq'&&o.stage=='Order Won'){o.fdate=o.fdate||today();o.fval=o.fval||ov(o)}
+ if(k=='inq'){mon=o.date.slice(0,7);$('#mon').value=mon}
+ if(k=='inq'&&o.company){const c=S.cl.find(c=>c.company==o.company);if(c){['person','mobile','city','buyer'].forEach(n=>{if(o[n])c[n]=o[n]})}else S.cl.push({id:uid(),company:o.company,person:o.person,mobile:o.mobile,city:o.city,buyer:o.buyer})}
+ if(k=='cl'&&oldCo&&oldCo!=o.company)S.inq.forEach(i=>{if(i.company==oldCo)i.company=o.company});
+ if(k=='task'&&!id)o.done=false;
+ if(k=='tgt'&&!id)o.done=o.done||0;
+ if(!id)S[k].push(o);
+ save();$('#dg').close();render();
+}
+function del(k,id){S[k]=S[k].filter(x=>x.id!=id);save();$('#dg').close();render()}
+function cs(v){const q=v.trim().toLowerCase(),b=$('#sug');if(!q){b.innerHTML='';return}b.innerHTML=S.cl.filter(c=>c.company.toLowerCase().includes(q)).slice(0,6).map(c=>'<div onclick="pick(\''+c.id+'\')">'+esc(c.company)+' <span class="sm">'+esc(c.mobile)+'</span></div>').join('')}
+function pick(id){const p=S.cl.find(c=>c.id==id);($('#f_company')||$('#f_with')).value=p.company;['person','mobile','city','buyer'].forEach(n=>{const el=$('#f_'+n);if(el&&p[n])el.value=p[n]});$('#sug').innerHTML=''}
+function nc(n){$('#n_'+n).style.display=$('#f_'+n).value=='__new'?'block':'none'}
+function addCat(k){const v=$('#nc_'+k).value.trim();if(v&&!S.cat[k].includes(v)){S.cat[k].push(v);save();render()}}
+function rmCat(k,i){S.cat[k].splice(i,1);save();render()}
+function bump(id,d){const t=S.tgt.find(x=>x.id==id);t.done=Math.max(0,t.done+d);save();render()}
+function tick(id){const t=S.task.find(x=>x.id==id);t.done=!t.done;save();render()}
+function setStage(id,s){const q=S.inq.find(x=>x.id==id);q.stage=s;q.sdate=today();if(s=='Order Won'){q.fdate=q.fdate||today();q.fval=q.fval||ov(q)}save();render();if(s=='Lost'||s=='Order Won')openForm('inq',id)}
+const ov=x=>(+x.rate||0)*(+x.qty||0);
+let fv='act';
+const val=x=>x.stage=='Order Won'&&x.fval?+x.fval:ov(x);
+const mt=x=>{const t=today(),M=S.meet.filter(m=>m.with==x.company);return{past:M.filter(m=>m.date<=t).map(m=>m.date).sort().pop(),fut:M.flatMap(m=>[m.date,m.ndate]).filter(d=>d&&d>t).sort()[0]}};
+function tg(id,f){const q=S.inq.find(x=>x.id==id);if(f=='tmeet'){const o=['Pending','Done','Not needed'];q.tmeet=o[(o.indexOf(q.tmeet||'Pending')+1)%3]}else q[f]=!q[f];save();render()}
+const info=(x,k)=>(S.cl.find(c=>c.company==x.company)||{})[k]||x[k]||'';
+const mo=x=>(x.date||x.month||'').slice(0,7),isOpen=x=>x.stage!='Order Won'&&x.stage!='Lost';
+const inM=x=>isOpen(x)?mo(x)<=mon:(x.sdate||x.date||x.month||'').slice(0,7)==mon;
+function donut(items){
+ const tot=items.reduce((a,b)=>a+b.n,0);if(!tot)return '<div class="sm">No inquiries this month</div>';
+ let off=0,r=40,C=2*Math.PI*r,s='';
+ items.forEach(i=>{const l=i.n/tot*C;s+='<circle r="'+r+'" cx="60" cy="60" fill="none" stroke="'+i.c+'" stroke-width="22" stroke-dasharray="'+l+' '+(C-l)+'" stroke-dashoffset="'+(-off)+'" transform="rotate(-90 60 60)"/>';off+=l});
+ return '<svg viewBox="0 0 120 120" style="width:140px;flex:none">'+s+'<text x="60" y="58" text-anchor="middle" font-size="18" font-weight="600" fill="currentColor">'+tot+'</text><text x="60" y="73" text-anchor="middle" font-size="9" fill="currentColor">inquiries</text></svg>';
+}
+function bars(t,k,L){const m={};L.forEach(x=>{const c=(k=='buyer'?info(x,k):x[k])||'Uncategorised';m[c]=(m[c]||0)+val(x)});const e=Object.entries(m),mx=Math.max(1,...e.map(a=>a[1]));return '<div class="c"><b>'+t+'</b>'+(e.map(([c,v])=>'<div class="row sm" style="margin-top:6px"><span>'+esc(c)+'</span><b style="color:var(--tx)">'+inr(v)+'</b></div><div class="b"><i style="width:'+v/mx*100+'%"></i></div>').join('')||'<div class="sm">No data this month</div>')+'</div>'}
+function dash(){
+ const L=S.inq.filter(inM),cf=L.filter(x=>mo(x)<mon&&isOpen(x)).length;
+ const act=L.filter(x=>x.stage!='Lost'&&x.stage!='Order Won');
+ const sum=a=>a.reduce((t,x)=>t+val(x),0);
+ const items=ST.map((s,i)=>({s,c:COL[i],n:L.filter(x=>x.stage==s).length,v:sum(L.filter(x=>x.stage==s))}));
+ const fu=S.inq.filter(x=>x.follow&&x.follow<=today()&&x.stage!='Lost'&&x.stage!='Order Won').sort((a,b)=>a.follow>b.follow?1:-1);
+ let h=(cf?'<div class="sm">Includes '+cf+' open inquiries carried forward from earlier months.</div>':'')+'<div class="g"><div class="c"><div class="k">Total funnel value</div><div class="v">'+inr(sum(L))+'</div></div><div class="c"><div class="k">Open pipeline</div><div class="v">'+inr(sum(act))+'</div></div><div class="c"><div class="k">Order won</div><div class="v" style="color:#1D9E75">'+inr(items[3].v)+'</div></div><div class="c"><div class="k">Lost</div><div class="v" style="color:#E24B4A">'+inr(items[4].v)+'</div></div></div>';
+ h+='<div class="c"><b>Stage-wise funnel</b><div class="row" style="margin-top:8px;align-items:center">'+donut(items)+'<div style="flex:1">'+items.map(i=>'<div class="row sm" style="margin:4px 0"><span><span class="dot" style="background:'+i.c+'"></span>'+i.s+' ('+i.n+')</span><b style="color:var(--tx)">'+inr(i.v)+'</b></div>').join('')+'</div></div></div>';
+ const mx=Math.max(1,...items.map(i=>i.v));
+ h+='<div class="c"><b>Value by stage</b>'+items.map(i=>'<div class="sm" style="margin-top:6px">'+i.s+'</div><div class="b"><i style="width:'+i.v/mx*100+'%;background:'+i.c+'"></i></div>').join('')+'</div>';
+ h+=bars('Value by product category','pcat',L)+bars('Value by buyer type','buyer',L)+(L.some(x=>x.stage=='Lost')?bars('Lost by reason','lreason',L.filter(x=>x.stage=='Lost')):'');
+ const um=S.meet.flatMap(m=>[{d:m.date,w:m.with,t:m.time},{d:m.ndate,w:m.with}]).filter(a=>a.d&&a.d>=today()).sort((a,b)=>a.d>b.d?1:-1).slice(0,6);
+ h+='<div class="c"><b>Upcoming meetings ('+um.length+')</b>'+(um.map(a=>'<div class="row sm" style="margin-top:8px"><span>'+esc(a.w)+'</span><span>'+a.d+' '+esc(a.t||'')+'</span></div>').join('')||'<div class="sm">No meetings scheduled</div>')+'</div>';
+ h+='<div class="c"><b>Follow-up due / overdue ('+fu.length+')</b>'+(fu.map(x=>'<div class="row" style="margin-top:8px" onclick="openForm(\'inq\',\''+x.id+'\')"><span>'+esc(x.company)+'<div class="sm">'+esc(x.product)+' • '+x.follow+'</div></span><span class="sm">'+esc(x.mobile)+'</span></div>').join('')||'<div class="sm">No follow-ups pending</div>')+'</div>';
+ const T=S.tgt.filter(x=>x.month==mon);
+ h+='<div class="c"><b>Targets</b>'+(T.map(t=>'<div class="row sm" style="margin-top:6px"><span>'+esc(t.name)+'</span><span>'+t.done+'/'+t.goal+'</span></div><div class="b"><i style="width:'+Math.min(100,t.done/(t.goal||1)*100)+'%"></i></div>').join('')||'<div class="sm">Add them in the Targets tab</div>')+'</div>';
+ return h;
+}
+function funnel(){
+ const L=(fv=='act'?S.inq.filter(inM):fv=='closed'?S.inq.filter(x=>!isOpen(x)):S.inq.slice()).reverse();
+ const ch=(k,t)=>'<button style="'+(fv==k?'background:var(--ac);color:#fff;border-color:var(--ac)':'')+'" onclick="fv=\''+k+'\';render()">'+t+'</button>';
+ let h='<div class="row"><b>Inquiries ('+L.length+')</b><button class="p" onclick="openForm(\'inq\')">+ Add</button></div><div style="display:flex;gap:6px;margin:8px 0">'+ch('act','Active')+ch('closed','Closed')+ch('all','All')+'</div>';
+ h+=L.map(x=>{const m=mt(x),chip=(f,t,on)=>'<button style="padding:4px 10px;font-size:12px;margin:6px 6px 0 0;'+(on?'background:#1D9E75;color:#fff;border-color:#1D9E75':'')+'" onclick="tg(\''+x.id+'\',\''+f+'\')">'+(on?'✓ ':'')+t+'</button>';
+ return '<div class="c"><div class="row" onclick="openForm(\'inq\',\''+x.id+'\')"><b>'+esc(x.company)+'</b><span class="tg" style="background:'+COL[ST.indexOf(x.stage)]+'">'+esc(x.stage)+'</span></div><div class="sm">'+esc(info(x,'buyer'))+' • '+esc(info(x,'person'))+' • '+esc(info(x,'mobile'))+' • '+esc(info(x,'city'))+'</div><div class="sm">'+esc(x.pcat)+' • '+esc(x.product)+' | '+esc(x.article)+' | '+esc(x.sku)+'</div><div class="row" style="margin-top:4px"><span class="sm">'+(x.rate||0)+' × '+(x.qty||0)+'</span><b>'+inr(val(x))+'</b></div>'
+ +(mo(x)<mon&&isOpen(x)?'<div class="sm" style="color:#EF9F27">Carried forward from '+mo(x)+'</div>':'')
+ +(x.stage=='Lost'&&x.lreason?'<div class="sm" style="color:#E24B4A">Lost: '+esc(x.lreason)+'</div>':'')
+ +(x.stage=='Order Won'?'<div class="sm" style="color:#1D9E75">Final: '+(x.fdate||'')+'</div>':'')
+ +(m.past||m.fut?'<div class="sm">Last meeting: '+(m.past||'—')+' • Next: '+(m.fut||'—')+'</div>':'')
+ +(x.follow?'<div class="sm">Follow-up: '+x.follow+'</div>':'')+(x.remarks?'<div class="sm">'+esc(x.remarks)+'</div>':'')
+ +chip('tsamp','Sample sent',x.tsamp)+chip('tquote','Quotation',x.tquote)+chip('tmeet','Meeting: '+(x.tmeet||'Pending'),x.tmeet=='Done'||x.tmeet=='Not needed')
+ +'<select style="margin-top:8px" onchange="setStage(\''+x.id+'\',this.value)">'+ST.map(s=>'<option'+(s==x.stage?' selected':'')+'>'+s+'</option>').join('')+'</select><div class="row" style="margin-top:8px"><button onclick="openForm(\'inq\',\''+x.id+'\')">Edit</button><button onclick="sure(this,()=>del(\'inq\',\''+x.id+'\'))">Delete</button></div></div>'}).join('')||'<div class="c sm">No inquiries here. Tap + Add.</div>';
+ return h;
+}
+function meets(){
+ const L=S.meet.filter(x=>(x.date||'').slice(0,7)==mon).sort((a,b)=>(a.date+a.time)>(b.date+b.time)?-1:1);
+ return '<div class="row"><b>Meetings ('+L.length+')</b><button class="p" onclick="openForm(\'meet\')">+ Schedule</button></div>'+(L.map(x=>'<div class="c" onclick="openForm(\'meet\',\''+x.id+'\')"><div class="row"><b>'+esc(x.with)+'</b><span class="sm">'+x.date+' '+esc(x.time)+'</span></div><div class="sm">'+esc(x.type)+'</div><div style="margin-top:4px">'+esc(x.notes)+'</div>'+(x.ndate?'<div class="sm">Next meeting: '+x.ndate+'</div>':'')+(x.next?'<div class="sm">Next: '+esc(x.next)+'</div>':'')+'</div>').join('')||'<div class="c sm">No meetings</div>');
+}
+function tasks(){
+ const T=S.tgt.filter(x=>x.month==mon),K=S.task.filter(x=>x.month==mon);
+ return '<div class="row"><b>Targets</b><button class="p" onclick="openForm(\'tgt\')">+ Add</button></div>'+(T.map(t=>'<div class="c"><div class="row"><span onclick="openForm(\'tgt\',\''+t.id+'\')"><b>'+esc(t.name)+'</b></span><span><button onclick="bump(\''+t.id+'\',-1)">−</button> <b>'+t.done+'/'+t.goal+'</b> <button onclick="bump(\''+t.id+'\',1)">+</button></span></div><div class="b"><i style="width:'+Math.min(100,t.done/(t.goal||1)*100)+'%"></i></div><div class="sm">Weekly ≈ '+Math.ceil(t.goal/4)+'</div></div>').join(''))+'<div class="row" style="margin-top:14px"><b>Monthly tasks</b><button class="p" onclick="openForm(\'task\')">+ Add</button></div>'+K.map(t=>'<div class="c row"><label style="margin:0;display:flex;gap:10px;align-items:center;color:var(--tx);font-size:15px"><input type="checkbox" style="width:20px" '+(t.done?'checked':'')+' onchange="tick(\''+t.id+'\')"><span style="'+(t.done?'text-decoration:line-through;color:var(--mu)':'')+'">'+esc(t.name)+'</span></label><button onclick="openForm(\'task\',\''+t.id+'\')">Edit</button></div>').join('');
+}
+function clients(){
+ return '<div class="row"><b>Clients ('+S.cl.length+')</b><span><button onclick="$(\'#ci\').click()">Import CSV</button> <button class="p" onclick="openForm(\'cl\')">+ Add</button></span></div><input type="file" id="ci" accept=".csv" style="display:none" onchange="impCl(this)"><div class="sm">CSV columns: Company, Contact person, Mobile, City, Buyer type</div>'+(note?'<div class="c sm">'+esc(note)+'</div>':'')+'<input placeholder="Search client…" style="margin:8px 0" onkeyup="flt(this.value)">'+S.cl.map(x=>{const I=S.inq.filter(i=>i.company==x.company);return '<div class="c cli" data-t="'+esc((x.company+x.person+x.city+x.mobile).toLowerCase())+'" onclick="openForm(\'cl\',\''+x.id+'\')"><div class="row"><b>'+esc(x.company)+'</b><span class="sm">'+esc(x.buyer)+'</span></div><div class="sm">'+esc(x.person)+' • '+esc(x.mobile)+' • '+esc(x.city)+'</div><div class="sm">'+I.length+' inquiries • '+inr(I.reduce((t,i)=>t+ov(i),0))+'</div></div>'}).join('');
+}
+const flt=v=>document.querySelectorAll('.cli').forEach(e=>e.style.display=e.dataset.t.includes(v.toLowerCase())?'':'none');
+function parseCSV(t){const R=[];let r=[],c='',q=false;for(let i=0;i<t.length;i++){const ch=t[i];if(q){if(ch=='"'){if(t[i+1]=='"'){c+='"';i++}else q=false}else c+=ch}else if(ch=='"')q=true;else if(ch==','){r.push(c.trim());c=''}else if(ch=='\n'){r.push(c.trim());R.push(r);r=[];c=''}else if(ch!='\r')c+=ch}if(c||r.length){r.push(c.trim());R.push(r)}return R.filter(r=>r.some(x=>x))}
+function impCl(el){const f=el.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{let rows=parseCSV(r.result);if(rows.length&&/company/i.test(rows[0][0]))rows.shift();let n=0;rows.forEach(a=>{const co=a[0];if(!co||S.cl.some(c=>c.company==co))return;const by=a[4]||'';if(by&&!S.cat.buyer.includes(by))S.cat.buyer.push(by);S.cl.push({id:uid(),company:co,person:a[1]||'',mobile:a[2]||'',city:a[3]||'',buyer:by});n++});note='Imported '+n+' new clients';save();render()};r.readAsText(f)}
+function data(){
+ const cs=(k,t)=>'<div class="c"><b>'+t+'</b><div class="sm">Tap a category to remove it. Old records keep their label.</div><div style="margin:8px 0">'+S.cat[k].map((c,i)=>'<span class="tg" style="background:var(--ac);display:inline-block;margin:0 6px 6px 0;padding:6px 10px" onclick="sure(this,()=>rmCat(\''+k+'\','+i+'))">'+esc(c)+' ✕</span>').join('')+'</div><div class="row"><input id="nc_'+k+'" placeholder="New category"><button class="p" onclick="addCat(\''+k+'\')">Add</button></div></div>';
+ return cs('prod','Product categories')+cs('buyer','Buyer types')+cs('lost','Lost reasons')+'<div class="c"><b>Account</b><p class="sm">Logged in as '+esc(me)+'. Data is shared live with everyone using this login, and works offline too.</p><button onclick="logout()">Log out</button></div><div class="c"><b>Manual backup</b><p class="sm">Optional extra copy as a file.</p><button onclick="exp()">Download backup (JSON)</button> <button onclick="csv()">Inquiries CSV</button><label>Restore from file</label><input type="file" accept=".json" onchange="imp(this)"></div>';
+}
+function dl(n,t){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/plain'}));a.download=n;document.body.appendChild(a);a.click();a.remove()}
+function exp(){dl('kart-funnel-backup.json',JSON.stringify(S))}
+function csv(){const k=F.inq.map(f=>f[0]);dl('inquiries.csv',[k.concat('order_value').join(',')].concat(S.inq.map(x=>k.map(n=>'"'+String(x[n]??'').replace(/"/g,'""')+'"').concat(ov(x)).join(','))).join('\n'))}
+function imp(el){const f=el.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const D=JSON.parse(r.result),mk={cl:o=>x=>x.company==o.company,tgt:o=>x=>x.month==o.month&&x.name==o.name,task:o=>x=>x.month==o.month&&x.name==o.name};
+ COLS.forEach(k=>(D[k]||[]).forEach(o=>{if(k=='inq'&&o.stage=='Meeting')o.stage='Negotiation';const i=S[k].findIndex(mk[k]?mk[k](o):x=>x.id==o.id);if(i<0)S[k].push(o);else if(k=='cl'){['person','mobile','city','buyer'].forEach(n=>{if(o[n])S.cl[i][n]=o[n]})}else{o.id=S[k][i].id;S[k][i]=o}}));
+ if(D.cat)Object.keys(D.cat).forEach(c=>{S.cat[c]=[...new Set([...(S.cat[c]||[]),...D.cat[c]])]});fix();save();note='Backup imported';render()}catch(e){note='Invalid backup file';render()}};r.readAsText(f)}
+function render(){
+ if(!ready()){$('#m').innerHTML='<div class="c sm">Loading…</div>';return}
+ seed();
+ $('#m').innerHTML=(note&&tab!='cl'?'<div class="c sm" style="color:#E24B4A">'+esc(note)+'</div>':'')+{dash,funnel,meets,tasks,cl:clients,data}[tab]();
+ const N={dash:'Dashboard',funnel:'Funnel',meets:'Meetings',tasks:'Targets',cl:'Clients',data:'Settings'};
+ $('#nav').innerHTML=Object.keys(N).map(k=>'<button class="'+(k==tab?'on':'')+'" onclick="tab=\''+k+'\';note=\'\';render()">'+N[k]+'</button>').join('');
+}
+const dg=$('#dg');$('#mon').value=mon;$('#mon').onchange=e=>{mon=e.target.value||mon;render()};
+firebase.initializeApp({apiKey:"AIzaSyBPahveigv-GmdPybhYu_Vo01Jm-kcPtjE",authDomain:"kart-funnel.firebaseapp.com",projectId:"kart-funnel",storageBucket:"kart-funnel.firebasestorage.app",messagingSenderId:"395752523680",appId:"1:395752523680:web:ab4a58586cfe6923f446c5"});
+db=firebase.firestore();auth=firebase.auth();
+try{db.enablePersistence({synchronizeTabs:true}).catch(()=>{})}catch(e){}
+auth.onAuthStateChanged(u=>{document.body.classList.remove('wait');if(u){me=u.email;document.body.classList.remove('out');if(!started){started=true;startSync();render()}}else document.body.classList.add('out')});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script></body></html>
